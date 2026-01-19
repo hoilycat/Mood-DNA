@@ -2,6 +2,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
+import colorsys
 from sklearn.cluster import KMeans
 
 # 1. 페이지 설정 (탭 이름이랑 아이콘 바꾸기)
@@ -77,42 +78,67 @@ if uploaded_file is not None:
 
     # ------------------------------------------------
     
-    # 4. [변경] AI 분석 리포트 카드 만들기
+  # ------------------------------------------------
+    # 4. [업그레이드] AI 분석 리포트 (HSV 로직 적용)
     st.write("---")
     st.subheader("📝 AI 디자인 분석 리포트")
     
+    # 가장 많이 쓴 색깔 가져오기
     dominant_color = colors[0]
-    r, g, b = dominant_color[0], dominant_color[1], dominant_color[2]
+    r, g, b = int(dominant_color[0]), int(dominant_color[1]), int(dominant_color[2])
     
-    # 로직에 따라 메시지와 추천 키워드 생성
-    if r > b:
-        mood_title = "Warm & Energetic (따뜻함/열정)"
-        icon = "🔥"
-        desc = """
-        이 이미지는 **난색(Red/Yellow) 계열**이 지배적입니다. 
-        사람들의 시선을 끌거나, 식욕을 돋우거나, 긍정적인 에너지를 전달하는 디자인에 적합합니다.
-        """
-        keywords = ["#열정", "#에너지", "#친근함", "#주목성"]
-        box_color = "#FFF4E6" # 연한 주황 배경
-    else:
-        mood_title = "Cool & Trust (차분함/신뢰)"
-        icon = "❄️"
-        desc = """
-        이 이미지는 **한색(Blue/Green) 계열**이 지배적입니다.
-        신뢰감을 주거나, 논리적인 정보를 전달하거나, 심리적인 안정을 주는 디자인에 적합합니다.
-        """
-        keywords = ["#신뢰", "#이성적", "#평온함", "#전문성"]
-        box_color = "#E6F4FF" # 연한 파랑 배경
+    # 1. RGB를 HSV(색상, 채도, 명도)로 변환하기
+    # (컴퓨터는 0~1 사이 숫자로 계산하는 걸 좋아해서 255로 나눠줌)
+    h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
+    
+    # 2. HSV 값을 이용한 정밀 판독 로직 (if문의 마법!)
+    # h(색상): 360도 원에서 위치, s(채도): 0~1, v(명도): 0~1
+    
+    mood_keyword = ""
+    desc = ""
+    icon = ""
+    box_color = ""
+    text_color = "#000000" # 글자색 기본 검정
 
-    # 예쁜 박스 안에 결과 넣기
+    # (1) 무채색/어두운색 판별 (채도가 낮거나 명도가 낮음)
+    if s < 0.2: 
+        mood_keyword = "Modern & Minimal (모던/미니멀)"
+        icon = "🏢"
+        desc = "색감이 절제되어 세련되고 깔끔한 인상을 줍니다. 현대적이고 도시적인 브랜드에 어울려요."
+        box_color = "#F0F0F0" # 회색 배경
+    elif v < 0.3:
+        mood_keyword = "Luxury & Heavy (고급/중후함)"
+        icon = "🎩"
+        desc = "어둡고 진한 컬러가 주를 이루어 중후하고 고급스러운 분위기를 풍깁니다. 프리미엄 라인에 추천해요."
+        box_color = "#2b2b2b" # 진한 회색 배경
+        text_color = "#ffffff" # 어두우니까 글자는 흰색으로!
+        
+    # (2) 유채색 판별 (색깔이 뚜렷함)
+    else:
+        # 채도가 높고 명도도 높으면 -> 쨍하고 밝음 (Vivid/Pop)
+        if s > 0.5 and v > 0.5:
+            mood_keyword = "Energetic & Pop (활기찬/팝)"
+            icon = "🎉"
+            desc = "채도가 높아 눈에 확 띄는 강렬한 에너지가 느껴집니다. 젊고 활동적인 타겟층에게 어필하기 좋아요."
+            box_color = "#FFF8E1" # 밝은 노랑 배경
+        # 그 외 (채도가 적당하거나 밝음) -> 자연스럽고 부드러움 (Natural/Soft)
+        else:
+            mood_keyword = "Natural & Soft (네추럴/소프트)"
+            icon = "🌿"
+            desc = "눈이 편안해지는 부드러운 색감입니다. 힐링, 감성, 자연주의 컨셉에 아주 잘 어울려요."
+            box_color = "#E8F5E9" # 연한 초록 배경
+
+    # 최종 리포트 출력
     st.markdown(f"""
-    <div style="padding: 20px; background-color: {box_color}; border-radius: 10px;">
-        <h3>{icon} {mood_title}</h3>
-        <p>{desc}</p>
-        <p><strong>추천 키워드:</strong> {' '.join(keywords)}</p>
+    <div style="padding: 20px; background-color: {box_color}; border-radius: 10px; border: 1px solid #ddd;">
+        <h3 style="color: {text_color};">{icon} {mood_keyword}</h3>
+        <p style="color: {text_color};">{desc}</p>
+        <hr>
+        <p style="color: {text_color}; font-size: 0.9em;">
+            <strong>📊 데이터 상세 분석:</strong><br>
+            • 주조색(RGB): {r}, {g}, {b}<br>
+            • 채도(Saturation): {int(s*100)}% (색의 선명도)<br>
+            • 명도(Value): {int(v*100)}% (색의 밝기)
+        </p>
     </div>
     """, unsafe_allow_html=True)
-
-else:
-    # 파일이 없을 때 보여줄 안내 문구
-    st.info("👈 왼쪽 사이드바에서 이미지를 업로드하면 분석이 시작됩니다!")
