@@ -5,195 +5,251 @@ import numpy as np
 import colorsys
 from sklearn.cluster import KMeans
 import cv2
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import io
 
-# 1. 페이지 설정 (탭 이름이랑 아이콘 바꾸기)
-st.set_page_config(page_title="Mood-DNA 분석기", page_icon="🧬", layout="wide")
+# -----------------------------------------------------------
+# 1. [함수] AI 컨설팅 메시지 생성기 (NEW! ✨)
+# -----------------------------------------------------------
+def get_ai_consulting(mood_data, complexity):
+    # 1. 구조(복잡도)에 따른 조언
+    struct_comment = ""
+    if complexity < 2:
+        struct_comment = "이 디자인은 **여백의 미(Negative Space)**를 아주 잘 활용하고 있어요. 사용자의 시선을 핵심 요소로 집중시키는 **'미니멀리즘 전략'**이 돋보입니다."
+    elif complexity < 5:
+        struct_comment = "이미지와 텍스트의 비율이 **이상적인 균형(Balance)**을 이루고 있습니다. 너무 비어 보이지도, 복잡하지도 않아 **가독성**이 매우 좋습니다."
+    else:
+        struct_comment = "밀도 높은 그래픽과 디테일이 **풍부한 정보**를 전달하고 있습니다. 화려한 비주얼로 압도해야 하는 **이벤트나 프로모션** 디자인에 적합합니다."
 
-st.title("🧬 Mood-DNA : 디자인 무드 분석 솔루션")
-st.markdown("---")
+    # 2. 분위기(Mood)에 따른 마케팅 조언
+    mood_comment = ""
+    keyword = mood_data['keyword']
+    
+    if "Modern" in keyword:
+        mood_comment = "도시적이고 세련된 컬러감은 **IT, 테크, 스타트업** 브랜드의 신뢰도를 높이는 데 효과적입니다."
+    elif "Luxury" in keyword:
+        mood_comment = "중후하고 깊이 있는 톤은 **프리미엄 제품**이나 **VIP 타겟 서비스**의 품격을 대변하기 좋습니다."
+    elif "Energetic" in keyword:
+        mood_comment = "통통 튀는 고채도 컬러는 **MZ세대**를 타겟으로 하거나, **클릭률(CTR)**을 높여야 하는 광고 소재로 아주 훌륭합니다."
+    else: # Natural
+        mood_comment = "눈이 편안한 저채도 컬러는 **웰빙, 라이프스타일, 에세이** 등 감성을 자극하는 분야에서 독보적인 분위기를 만듭니다."
 
-# 2. [변경] 사이드바(Sidebar) 만들기 - 도구함
-# st.sidebar 를 쓰면 왼쪽에 별도 공간이 생겨!
-st.sidebar.header("📂 이미지 업로드")
-st.sidebar.write("분석할 디자인 시안이나 사진을 올려주세요.")
-uploaded_file = st.sidebar.file_uploader("파일 선택", type=['jpg', 'png', 'jpeg'])
+    # 3. 최종 합치기
+    full_advice = f"""
+    💡 **AI 디자인 컨설턴트의 총평:**
+    
+    {struct_comment} 또한, {mood_comment}
+    
+    종합적으로 보았을 때, 이 시안은 **[{keyword}]** 무드를 통해 타겟 고객에게 강력한 시각적 경험을 제공할 수 있는 잠재력이 있습니다.
+    """
+    return full_advice
 
-if uploaded_file is not None:
-    # 이미지 열기 & 변환
-    image = Image.open(uploaded_file)
-    image = image.convert('RGB')
+# -----------------------------------------------------------
+# 2. [함수] 분석 로봇
+# -----------------------------------------------------------
+def analyze_image_dna(image):
+    img_rgb = image.convert('RGB')
+    resized_img = img_rgb.resize((400, 400))
+    img_array = np.array(resized_img)
     
-    # 속도 빠르게 줄이기
-    resized_image = image.resize((400, 400))
-    img_array = np.array(resized_image)
-    pixels = img_array.reshape(-1, 3)
-    
-    # K-Means 분석
-    kmeans = KMeans(n_clusters=5)
-    kmeans.fit(pixels)
-    colors = kmeans.cluster_centers_.astype(int)
-    
-    # ------------------------------------------------
-    # 3. [변경] 레이아웃 나누기 (2단 컬럼)
-    # 왼쪽(col1)엔 사진, 오른쪽(col2)엔 그래프를 둘 거야!
-    col1, col2 = st.columns([1, 1]) # 1:1 비율로 나누기
-    
-    with col1:
-        st.subheader("📸 원본 이미지")
-        st.image(image, use_container_width=True)
-        
-    with col2:
-        st.subheader("📊 색상 비율 분석")
-        
-        # 파이 차트 그리기
-        fig, ax = plt.subplots(figsize=(6, 4)) # 크기 조절
-        unique, counts = np.unique(kmeans.labels_, return_counts=True)
-        
-        sorted_indices = np.argsort(counts)[::-1]
-        sorted_counts = counts[sorted_indices]
-        sorted_colors = [colors[i] for i in sorted_indices]
-        sorted_hex = ['#{:02x}{:02x}{:02x}'.format(c[0],c[1],c[2]) for c in sorted_colors]
-        sorted_colors_norm = [c/255 for c in sorted_colors]
-        
-        ax.pie(sorted_counts, labels=sorted_hex, colors=sorted_colors_norm, autopct='%1.1f%%', textprops={'fontsize': 10})
-        st.pyplot(fig)
-    
-    # ------------------------------------------------
-# ... (위에는 파이 차트 그리는 코드) ...
-    st.pyplot(fig)  # <-- 기존 코드 끝나는 곳
-
-    # ------------------------------------------------
-    # 🦴 [NEW] Step 1. 형태(Shape) 분석 - OpenCV
-    # ------------------------------------------------
-    st.write("---")
-    st.subheader("📐 디자인 구조(Structure) 분석")
-    st.write("이미지의 윤곽선을 추출하여 **복잡도**와 **직선/곡선 성향**을 분석합니다.")
-
-    # 1. OpenCV는 이미지를 읽을 때 색깔 순서가 반대(BGR)라서 RGB로 바꿔줘야 해! (넘파이 배열 활용)
-    # 아까 만든 resized_image(작은 사진)를 쓰자!
-    open_cv_image = np.array(resized_image) 
-    
-    # 2. 흑백으로 변환 (윤곽선은 흑백일 때 제일 잘 보여!)
+    # 구조 분석
+    open_cv_image = np.array(resized_img)
     gray_image = cv2.cvtColor(open_cv_image, cv2.COLOR_RGB2GRAY)
-    
-    # 3. Canny Edge Detection (윤곽선 따기 마법)
-    # 숫자 100, 200은 "얼마나 진한 선만 남길래?" 하는 기준이야.
     edges = cv2.Canny(gray_image, 100, 200)
-
-    # 4. 분석 로직: 흰색 점(선)이 얼마나 많은가?
-    # 전체 픽셀 수 대비 선이 차지하는 비율 계산
     total_pixels = edges.size
     edge_pixels = np.count_nonzero(edges)
     complexity_ratio = (edge_pixels / total_pixels) * 100
     
-    # 5. 복잡도 판정 (단순함 vs 복잡함)
-    if complexity_ratio < 2:
-        struct_mood = "Minimal & Simple (단순함/여백)"
-        struct_desc = "윤곽선이 적고 여백이 많습니다. 미니멀하고 깔끔한 디자인입니다."
-        struct_icon = "⬜"
-    elif complexity_ratio < 5:
-        struct_mood = "Balanced (균형 잡힘)"
-        struct_desc = "적당한 밀도의 조형미가 느껴집니다. 안정적인 구조입니다."
-        struct_icon = "⚖️"
-    else:
-        struct_mood = "Complex & Detailed (복잡함/디테일)"
-        struct_desc = "밀도가 높고 디테일이 많습니다. 화려하거나 정보량이 많은 디자인입니다."
-        struct_icon = "🕸️"
-
-    # 6. 화면에 보여주기 (컬럼 나눠서 비교!)
-    col_img1, col_img2 = st.columns(2)
+    # 색상 분석
+    pixels = img_array.reshape(-1, 3)
+    kmeans = KMeans(n_clusters=5, random_state=42)
+    kmeans.fit(pixels)
+    colors = kmeans.cluster_centers_.astype(int)
     
-    with col_img1:
-        st.caption("📷 원본 (Original)")
-        st.image(resized_image, use_container_width=True)
-        
-    with col_img2:
-        st.caption(f"🦴 구조 추출 (Edge) - 복잡도: {complexity_ratio:.2f}%")
-        # 윤곽선 이미지는 흑백이라서 clamp 옵션이 필요해
-        st.image(edges, use_container_width=True, clamp=True)
+    unique, counts = np.unique(kmeans.labels_, return_counts=True)
+    sorted_indices = np.argsort(counts)[::-1]
+    sorted_counts = counts[sorted_indices]
+    sorted_colors = [colors[i] for i in sorted_indices]
     
-    # 구조 분석 결과 박스
-    st.info(f"📐 구조 분석 결과: **[{struct_mood}]** {struct_icon}\n\n{struct_desc}")
-    st.write("---")
-    st.subheader("🎨 추출된 메인 컬러 팔레트")
-    
-    # 컬러 팔레트 보여주기
-    pal_cols = st.columns(5)
-    for i, color in enumerate(colors):
-        hex_code = '#{:02x}{:02x}{:02x}'.format(color[0], color[1], color[2])
-        color_code = f"rgb({color[0]},{color[1]},{color[2]})"
-        
-        with pal_cols[i]:
-            st.markdown(
-                f'<div style="background-color:{color_code}; width: 100%; height:60px; border-radius: 10px; margin-bottom: 10px;"></div>',
-                unsafe_allow_html=True
-            )
-            st.markdown(f"**{hex_code}**")
-            st.caption(f"Color {i+1}")
-
-    # ------------------------------------------------
-    
-  # ------------------------------------------------
-    # 4. [업그레이드] AI 분석 리포트 (HSV 로직 적용)
-    st.write("---")
-    st.subheader("📝 AI 디자인 분석 리포트")
-    
-    # 가장 많이 쓴 색깔 가져오기
-    dominant_color = colors[0]
+    # 무드 판정
+    dominant_color = sorted_colors[0]
     r, g, b = int(dominant_color[0]), int(dominant_color[1]), int(dominant_color[2])
-    
-    # 1. RGB를 HSV(색상, 채도, 명도)로 변환하기
-    # (컴퓨터는 0~1 사이 숫자로 계산하는 걸 좋아해서 255로 나눠줌)
     h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
     
-    # 2. HSV 값을 이용한 정밀 판독 로직 (if문의 마법!)
-    # h(색상): 360도 원에서 위치, s(채도): 0~1, v(명도): 0~1
-    
-    mood_keyword = ""
-    desc = ""
-    icon = ""
-    box_color = ""
-    text_color = "#000000" # 글자색 기본 검정
-
-    # (1) 무채색/어두운색 판별 (채도가 낮거나 명도가 낮음)
-    if s < 0.2: 
-        mood_keyword = "Modern & Minimal (모던/미니멀)"
-        icon = "🏢"
-        desc = "색감이 절제되어 세련되고 깔끔한 인상을 줍니다. 현대적이고 도시적인 브랜드에 어울려요."
-        box_color = "#F0F0F0" # 회색 배경
+    mood_result = {}
+    if s < 0.2:
+        mood_result = {"keyword": "Modern & Minimal", "icon": "🏢", "desc": "절제되고 세련된 도시적 감성"}
     elif v < 0.3:
-        mood_keyword = "Luxury & Heavy (고급/중후함)"
-        icon = "🎩"
-        desc = "어둡고 진한 컬러가 주를 이루어 중후하고 고급스러운 분위기를 풍깁니다. 프리미엄 라인에 추천해요."
-        box_color = "#2b2b2b" # 진한 회색 배경
-        text_color = "#ffffff" # 어두우니까 글자는 흰색으로!
-        
-    # (2) 유채색 판별 (색깔이 뚜렷함)
+        mood_result = {"keyword": "Luxury & Heavy", "icon": "🎩", "desc": "중후하고 고급스러운 프리미엄 감성"}
+    elif s > 0.5 and v > 0.5:
+        mood_result = {"keyword": "Energetic & Pop", "icon": "🎉", "desc": "강렬한 에너지와 젊음의 감성"}
     else:
-        # 채도가 높고 명도도 높으면 -> 쨍하고 밝음 (Vivid/Pop)
-        if s > 0.5 and v > 0.5:
-            mood_keyword = "Energetic & Pop (활기찬/팝)"
-            icon = "🎉"
-            desc = "채도가 높아 눈에 확 띄는 강렬한 에너지가 느껴집니다. 젊고 활동적인 타겟층에게 어필하기 좋아요."
-            box_color = "#FFF8E1" # 밝은 노랑 배경
-        # 그 외 (채도가 적당하거나 밝음) -> 자연스럽고 부드러움 (Natural/Soft)
-        else:
-            mood_keyword = "Natural & Soft (네추럴/소프트)"
-            icon = "🌿"
-            desc = "눈이 편안해지는 부드러운 색감입니다. 힐링, 감성, 자연주의 컨셉에 아주 잘 어울려요."
-            box_color = "#E8F5E9" # 연한 초록 배경
+        mood_result = {"keyword": "Natural & Soft", "icon": "🌿", "desc": "편안하고 부드러운 힐링 감성"}
 
-    # 최종 리포트 출력
-    st.markdown(f"""
-    <div style="padding: 20px; background-color: {box_color}; border-radius: 10px; border: 1px solid #ddd;">
-        <h3 style="color: {text_color};">{icon} {mood_keyword}</h3>
-        <p style="color: {text_color};">{desc}</p>
-        <hr>
-        <p style="color: {text_color}; font-size: 0.9em;">
-            <strong>📊 데이터 상세 분석:</strong><br>
-            • 주조색(RGB): {r}, {g}, {b}<br>
-            • 채도(Saturation): {int(s*100)}% (색의 선명도)<br>
-            • 명도(Value): {int(v*100)}% (색의 밝기)
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    return {
+        "image": resized_img,
+        "edges": edges,
+        "colors": sorted_colors,
+        "counts": sorted_counts,
+        "complexity": complexity_ratio,
+        "mood": mood_result
+    }
+
+# -----------------------------------------------------------
+# 3. [함수] PDF 리포트 생성기
+# -----------------------------------------------------------
+def create_pdf_report(dna_data, advice_text):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(50, height - 50, "Mood-DNA Analysis Report")
+    
+    # 기본 정보
+    mood = dna_data['mood']
+    c.setFont("Helvetica", 14)
+    c.drawString(50, height - 100, f"Main Mood: {mood['keyword']}")
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 130, f"Structure Complexity: {dna_data['complexity']:.2f}%")
+    
+    # 컨설팅 내용 (PDF에는 영문이나 단순화해서 넣는 게 안전하지만, 일단 형식만 갖춤)
+    c.drawString(50, height - 160, "AI Consultant Comment:")
+    c.setFont("Helvetica-Oblique", 10)
+    c.drawString(50, height - 180, f"This design shows {mood['keyword']} style with {dna_data['complexity']:.2f}% complexity.")
+    c.drawString(50, height - 195, "It is suitable for the target audience matching this mood.")
+    
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+# -----------------------------------------------------------
+# 4. 메인 화면 (UI)
+# -----------------------------------------------------------
+st.set_page_config(page_title="Mood-DNA Pro", page_icon="🧬", layout="wide")
+
+st.title("🧬 Mood-DNA : AI 디자인 무드 분석기")
+
+st.sidebar.header("🎛️ 분석 모드 설정")
+mode = st.sidebar.radio("모드를 선택하세요:", ["단일 분석 (Single)", "A/B 비교 (Comparison)"])
+
+# ===========================================================
+# 모드 1: 단일 분석
+# ===========================================================
+if mode == "단일 분석 (Single)":
+    st.sidebar.markdown("---")
+    uploaded_file = st.sidebar.file_uploader("이미지 업로드", type=['jpg', 'png', 'jpeg'])
+    
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+        dna = analyze_image_dna(image)
+        
+        # ★ 여기서 AI 조언 생성!
+        ai_advice = get_ai_consulting(dna['mood'], dna['complexity'])
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.image(dna['image'], caption="원본 이미지", use_container_width=True)
+        with col2:
+            st.image(dna['edges'], caption=f"구조 분석 (복잡도: {dna['complexity']:.2f}%)", use_container_width=True)
+            
+        st.info(f"🧬 분석 결과: **[{dna['mood']['keyword']}]** {dna['mood']['icon']}\n\n{dna['mood']['desc']}")
+        
+        # ★ [NEW] AI 컨설팅 메시지 보여주기 (파란 박스 대신 깔끔한 예쁜 박스로!)
+        st.markdown(f"""
+        <div style="background-color:#f9f9f9; padding:20px; border-radius:10px; border-left: 5px solid #6c5ce7;">
+            {ai_advice}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.write("---")
+        
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.subheader("🎨 Color Palette")
+            for i, color in enumerate(dna['colors']):
+                hex_code = '#{:02x}{:02x}{:02x}'.format(color[0], color[1], color[2])
+                st.markdown(f'<div style="background-color:{hex_code};height:40px;border-radius:5px;margin-bottom:5px;"></div>', unsafe_allow_html=True)
+                st.caption(f"{hex_code}")
+                
+        with c2:
+            st.subheader("📊 Color Ratio")
+            fig, ax = plt.subplots(figsize=(4, 3))
+            sorted_hex = ['#{:02x}{:02x}{:02x}'.format(c[0],c[1],c[2]) for c in dna['colors']]
+            sorted_colors_norm = [c/255 for c in dna['colors']]
+            ax.pie(dna['counts'], labels=sorted_hex, colors=sorted_colors_norm, autopct='%1.1f%%', textprops={'fontsize': 8})
+            st.pyplot(fig)
+
+        st.write("---")
+        pdf_bytes = create_pdf_report(dna, ai_advice)
+        st.download_button(
+            label="📄 분석 리포트 PDF 다운로드",
+            data=pdf_bytes,
+            file_name="mood_dna_report.pdf",
+            mime="application/pdf"
+        )
+
+# ===========================================================
+# 모드 2: A/B 비교 (Comparison) - 수리 완료 버전! 🛠️
+# ===========================================================
+elif mode == "A/B 비교 (Comparison)":
+    st.header("⚖️ A/B Test : 디자인 시안 비교")
+    st.write("두 개의 이미지를 업로드하여 **매력도와 무드**를 비교분석합니다.")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        file_a = st.file_uploader("A안 이미지", type=['jpg', 'png'], key="a")
+    with col_b:
+        file_b = st.file_uploader("B안 이미지", type=['jpg', 'png'], key="b")
+        
+    if file_a and file_b:
+        st.write("---")
+        # 분석 실행
+        dna_a = analyze_image_dna(Image.open(file_a))
+        dna_b = analyze_image_dna(Image.open(file_b))
+        
+        # AI 조언 생성
+        advice_a = get_ai_consulting(dna_a['mood'], dna_a['complexity'])
+        advice_b = get_ai_consulting(dna_b['mood'], dna_b['complexity'])
+
+        c1, c2 = st.columns(2)
+        
+        # [A안 결과 화면]
+        with c1:
+            st.image(dna_a['image'], caption="[A안]", use_container_width=True)
+            st.success(f"**{dna_a['mood']['keyword']}**")
+            st.write(f"구조 복잡도: {dna_a['complexity']:.2f}%")
+            
+            # ★ [수리 포인트] 글자수 제한 풀고 '접었다 펴기'로 변경!
+            with st.expander("💡 AI 상세 분석 읽기"):
+                st.write(advice_a)
+            
+        # [B안 결과 화면]
+        with c2:
+            st.image(dna_b['image'], caption="[B안]", use_container_width=True)
+            st.success(f"**{dna_b['mood']['keyword']}**")
+            st.write(f"구조 복잡도: {dna_b['complexity']:.2f}%")
+            
+            # ★ [수리 포인트] 여기도 제한 해제!
+            with st.expander("💡 AI 상세 분석 읽기"):
+                st.write(advice_b)
+            
+        st.write("---")
+        st.subheader("🤖 AI의 비교 코멘트")
+        
+        # 비교 로직
+        diff = abs(dna_a['complexity'] - dna_b['complexity'])
+        if diff > 5:
+            winner = "A안" if dna_a['complexity'] < dna_b['complexity'] else "B안"
+            comment = f"두 시안은 구조적으로 큰 차이가 있습니다. **{winner}**이 훨씬 **미니멀하고 직관적**입니다. 정보 전달이 목적이라면 {winner}을, 화려함이 목적이라면 반대안을 선택하세요."
+        else:
+            comment = "두 시안의 구조적 복잡도는 비슷합니다. **브랜드 컬러 아이덴티티**에 더 부합하는 쪽을 선택하는 것을 추천합니다."
+            
+        st.info(comment)
+
+else:
+    st.sidebar.info("👈 왼쪽에서 모드를 선택하고 이미지를 업로드해주세요!")
