@@ -10,6 +10,9 @@ if uploaded_file is not None:
     st.image(image, caption='업로드된 사진',use_container_width=True)
     st.write("사진의 색깔 DNA를 분석 중이야")
     
+    
+    #속도 해결(이미지를 작게 줄여서 계산 속도 올리기)
+    resized_image = image.resize((400,400)) 
     img_array = np.array(image)
     pixels = img_array.reshape(-1,3)
     
@@ -33,3 +36,22 @@ if uploaded_file is not None:
             )
             st.markdown(f"**{hex_code}**")
             st.caption(f"DNA{i+1}")
+            
+    st.write("---")
+    st.write("### 무드 온도계 분석")
+            
+    dominant_color =colors[0]
+    r,g,b =dominant_color[0],dominant_color[1],dominant_color[2]
+            
+    if r> b:
+        mood = "따뜻하고 열정적인(Warm)"
+        icon = "🔥"
+        msg="이 사진은 활력이 넘치고 온기가 느껴져! 긍정적인 에너지가 뿜뿜!"
+                
+    else: 
+        mood = "차분하고 이성적인"
+        icon = "❄️"
+        msg = "이 사진은 마음을 가라앉히는 차분함이 느껴져, 지적인 분위기인걸?"
+            
+    st.info(f"이 사진의 메인 무드는 **[{mood}]**이야! {icon}")
+    st.caption(msg)
