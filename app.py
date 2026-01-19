@@ -4,6 +4,7 @@ from PIL import Image
 import numpy as np
 import colorsys
 from sklearn.cluster import KMeans
+import cv2
 
 # 1. 페이지 설정 (탭 이름이랑 아이콘 바꾸기)
 st.set_page_config(page_title="Mood-DNA 분석기", page_icon="🧬", layout="wide")
@@ -58,7 +59,61 @@ if uploaded_file is not None:
         st.pyplot(fig)
     
     # ------------------------------------------------
+# ... (위에는 파이 차트 그리는 코드) ...
+    st.pyplot(fig)  # <-- 기존 코드 끝나는 곳
+
+    # ------------------------------------------------
+    # 🦴 [NEW] Step 1. 형태(Shape) 분석 - OpenCV
+    # ------------------------------------------------
+    st.write("---")
+    st.subheader("📐 디자인 구조(Structure) 분석")
+    st.write("이미지의 윤곽선을 추출하여 **복잡도**와 **직선/곡선 성향**을 분석합니다.")
+
+    # 1. OpenCV는 이미지를 읽을 때 색깔 순서가 반대(BGR)라서 RGB로 바꿔줘야 해! (넘파이 배열 활용)
+    # 아까 만든 resized_image(작은 사진)를 쓰자!
+    open_cv_image = np.array(resized_image) 
     
+    # 2. 흑백으로 변환 (윤곽선은 흑백일 때 제일 잘 보여!)
+    gray_image = cv2.cvtColor(open_cv_image, cv2.COLOR_RGB2GRAY)
+    
+    # 3. Canny Edge Detection (윤곽선 따기 마법)
+    # 숫자 100, 200은 "얼마나 진한 선만 남길래?" 하는 기준이야.
+    edges = cv2.Canny(gray_image, 100, 200)
+
+    # 4. 분석 로직: 흰색 점(선)이 얼마나 많은가?
+    # 전체 픽셀 수 대비 선이 차지하는 비율 계산
+    total_pixels = edges.size
+    edge_pixels = np.count_nonzero(edges)
+    complexity_ratio = (edge_pixels / total_pixels) * 100
+    
+    # 5. 복잡도 판정 (단순함 vs 복잡함)
+    if complexity_ratio < 2:
+        struct_mood = "Minimal & Simple (단순함/여백)"
+        struct_desc = "윤곽선이 적고 여백이 많습니다. 미니멀하고 깔끔한 디자인입니다."
+        struct_icon = "⬜"
+    elif complexity_ratio < 5:
+        struct_mood = "Balanced (균형 잡힘)"
+        struct_desc = "적당한 밀도의 조형미가 느껴집니다. 안정적인 구조입니다."
+        struct_icon = "⚖️"
+    else:
+        struct_mood = "Complex & Detailed (복잡함/디테일)"
+        struct_desc = "밀도가 높고 디테일이 많습니다. 화려하거나 정보량이 많은 디자인입니다."
+        struct_icon = "🕸️"
+
+    # 6. 화면에 보여주기 (컬럼 나눠서 비교!)
+    col_img1, col_img2 = st.columns(2)
+    
+    with col_img1:
+        st.caption("📷 원본 (Original)")
+        st.image(resized_image, use_container_width=True)
+        
+    with col_img2:
+        st.caption(f"🦴 구조 추출 (Edge) - 복잡도: {complexity_ratio:.2f}%")
+        # 윤곽선 이미지는 흑백이라서 clamp 옵션이 필요해
+        st.image(edges, use_container_width=True, clamp=True)
+    
+    # 구조 분석 결과 박스
+    st.info(f"📐 구조 분석 결과: **[{struct_mood}]** {struct_icon}\n\n{struct_desc}")
     st.write("---")
     st.subheader("🎨 추출된 메인 컬러 팔레트")
     
