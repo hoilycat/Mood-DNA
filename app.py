@@ -7,35 +7,51 @@ from sklearn.cluster import KMeans
 import cv2
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader  # <--- [추가] PDF에 사진 넣는 도구
 import io
 import os
-import requests  # <--- ★[NEW] 인터넷 연결용 배달부
+import requests
 
 # -----------------------------------------------------------
-# [함수] Unsplash 이미지 검색기 (NEW! 🌐)
+# [함수] Unsplash 이미지 검색기 (스마트 버전 🧠)
 # -----------------------------------------------------------
-def search_unsplash(query, api_key):
-    # 1. 키가 없으면 검색 안 함
-    if not api_key:
+def search_unsplash(query, mood_color_rgb):
+    # 1. 비밀 금고(.streamlit/secrets.toml)에서 키 꺼내기
+    try:
+        api_key = st.secrets["unsplash_api_key"]
+    except:
+        # 키가 없으면 그냥 빈 리스트 반환 (에러 방지)
         return []
+
+    # 2. 색깔 이름을 영어로 추측하기 (검색어용)
+    r, g, b = mood_color_rgb
+    color_name = "Minimal" # 기본값
     
-    # 2. 검색어 최적화 (분석 결과 + 'design', 'texture' 등 붙이기)
-    search_query = f"{query} aesthetic design wallpaper"
+    # 색상 판별 로직 (단순화)
+    if r > 200 and g > 200 and b > 200: color_name = "White Clean"
+    elif r < 50 and g < 50 and b < 50: color_name = "Dark Mode"
+    elif r > g and r > b: color_name = "Red"
+    elif g > r and g > b: color_name = "Green"
+    elif b > r and b > g: color_name = "Blue"
+    elif r > 200 and g > 200: color_name = "Yellow"
     
-    # 3. 요청 보내기
-    url = f"https://api.unsplash.com/search/photos"
+    # 3. 검색어 조합: "Green Minimal UI Design Layout" 처럼 구체적으로!
+    # query(예: Natural) + color_name(예: Green) + UI Design
+    search_query = f"{color_name} {query} UI Design Layout"
+    
+    # 4. 요청 보내기
+    url = "https://api.unsplash.com/search/photos"
     params = {
         "query": search_query,
-        "client_id": api_key, # 입장권
-        "per_page": 3,        # 3장만 가져와
-        "orientation": "squarish" # 보기 좋게 정사각형 느낌
+        "client_id": api_key,
+        "per_page": 3,
+        "orientation": "landscape" # 가로 사진이 레퍼런스로 보기 좋음
     }
     
     try:
         response = requests.get(url, params=params)
         if response.status_code == 200:
             data = response.json()
-            # 이미지 URL과 작가 이름만 쏙쏙 뽑아내기
             results = []
             for item in data['results']:
                 results.append({
@@ -45,12 +61,12 @@ def search_unsplash(query, api_key):
                 })
             return results
         else:
-            return [] # 에러나면 빈손으로 복귀
+            return []
     except:
         return []
 
 # -----------------------------------------------------------
-# [함수] 분석 로봇 (스타벅스 해결 + 캐싱 제거 버전)
+# [함수] 분석 로봇 (스타벅스 해결 버전)
 # -----------------------------------------------------------
 def analyze_image_dna(image):
     img_rgb = image.convert('RGB')
@@ -76,13 +92,13 @@ def analyze_image_dna(image):
     sorted_counts = counts[sorted_indices]
     sorted_colors = [colors[i] for i in sorted_indices]
     
-    # ★ 배경색(흰/검) 무시 로직
+    # 배경색(흰/검) 무시 로직
     dominant_color = sorted_colors[0]
     r, g, b = int(dominant_color[0]), int(dominant_color[1]), int(dominant_color[2])
     h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
     
-    if (v > 0.9 and s < 0.1) or (v < 0.1):
-        dominant_color = sorted_colors[1]
+    if (v > 0.9 and s < 0.1) or (v < 0.1): # 너무 하얗거나 너무 까맣다면
+        dominant_color = sorted_colors[1] # 2등 색깔 선택
         r, g, b = int(dominant_color[0]), int(dominant_color[1]), int(dominant_color[2])
         h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
     
@@ -130,20 +146,62 @@ def get_ai_consulting(mood_data, complexity):
     """
 
 # -----------------------------------------------------------
-# [함수] PDF 생성
+# [함수] PDF 생성 (업그레이드: 이미지+차트 포함! 🎨)
 # -----------------------------------------------------------
 def create_pdf_report(dna_data, advice_text):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
-    c.setFont("Helvetica-Bold", 20)
+    
+    # 1. 제목
+    c.setFont("Helvetica-Bold", 24)
     c.drawString(50, height - 50, "Mood-DNA Analysis Report")
+    c.setLineWidth(1)
+    c.line(50, height - 60, width - 50, height - 60)
+
+    # 2. 메인 무드
     mood = dna_data['mood']
-    c.setFont("Helvetica", 14)
+    c.setFont("Helvetica-Bold", 16)
     c.drawString(50, height - 100, f"Main Mood: {mood['keyword']}")
+    
     c.setFont("Helvetica", 12)
-    c.drawString(50, height - 130, f"Complexity: {dna_data['complexity']:.2f}%")
-    c.drawString(50, height - 150, f"Dominant Color: {dna_data['colors'][0]}")
+    c.setFillColorRGB(0.3, 0.3, 0.3)
+    c.drawString(50, height - 120, f"{mood['desc']}") # 영어만 지원됨 (한글 깨짐 주의)
+    c.setFillColorRGB(0, 0, 0)
+
+    # 3. 원본 이미지 넣기 (왼쪽)
+    img_buffer = io.BytesIO()
+    dna_data['image'].save(img_buffer, format='PNG')
+    img_buffer.seek(0)
+    c.drawImage(ImageReader(img_buffer), 50, height - 350, width=200, height=200, preserveAspectRatio=True)
+
+    # 4. 컬러 팔레트 그리기 (오른쪽)
+    c.drawString(280, height - 150, "Color Palette & Ratio")
+    y_pos = height - 180
+    for i, color in enumerate(dna_data['colors']):
+        r, g, b = color[0]/255, color[1]/255, color[2]/255
+        c.setFillColorRGB(r, g, b)
+        c.rect(280, y_pos, 40, 20, fill=1, stroke=0) # 사각형
+        
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont("Helvetica", 10)
+        hex_code = '#{:02x}{:02x}{:02x}'.format(color[0], color[1], color[2])
+        percent = dna_data['counts'][i] / sum(dna_data['counts']) * 100
+        c.drawString(330, y_pos + 5, f"{hex_code} ({percent:.1f}%)")
+        y_pos -= 30
+
+    # 5. 구조 분석 점수
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, height - 380, "Structure Analysis")
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 400, f"Complexity Score: {dna_data['complexity']:.2f}%")
+    
+    # 6. AI 코멘트 (요약)
+    c.drawString(50, height - 460, "AI Consultant Summary:")
+    c.setFont("Helvetica-Oblique", 10)
+    c.drawString(50, height - 480, "This design uses color harmony effectively.")
+    c.drawString(50, height - 495, "Recommended for branding targeting the specific mood.")
+
     c.showPage()
     c.save()
     buffer.seek(0)
@@ -155,19 +213,12 @@ def create_pdf_report(dna_data, advice_text):
 st.set_page_config(page_title="Mood-DNA Pro", page_icon="🧬", layout="wide")
 
 st.title("🧬 Mood-DNA : AI 디자인 무드 분석기")
-
-# 사이드바 설정
 st.sidebar.header("🎛️ 분석 모드 설정")
 mode = st.sidebar.radio("모드를 선택하세요:", ["단일 분석 (Single)", "A/B 비교 (Comparison)"])
 
-# ★ [NEW] API 키 입력창 (사이드바 하단)
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔑 Unsplash 설정")
-st.sidebar.caption("Unsplash Developers에서 발급받은 Access Key를 입력하면 유사 이미지를 추천해줍니다.")
-unsplash_key = st.sidebar.text_input("Access Key 입력", type="password")
-
 # ======================= [모드 1] 단일 분석 =======================
 if mode == "단일 분석 (Single)":
+    st.sidebar.markdown("---")
     uploaded_file = st.sidebar.file_uploader("이미지 업로드", type=['jpg', 'png', 'jpeg'])
     
     if uploaded_file:
@@ -202,31 +253,28 @@ if mode == "단일 분석 (Single)":
             ax.pie(dna['counts'], labels=sorted_hex, colors=sorted_colors_norm, autopct='%1.1f%%', textprops={'fontsize': 8})
             st.pyplot(fig)
 
-        # ★ [NEW] Unsplash 추천 시스템
+        # ★ [NEW] Unsplash 추천 시스템 (입력창 없이 자동!)
         st.write("---")
         st.subheader("🖼️ AI 추천 레퍼런스 (Powered by Unsplash)")
         
-        if unsplash_key:
-            with st.spinner(f"🌐 Unsplash에서 '{dna['mood']['keyword']}' 스타일 찾는 중..."):
-                # "Modern & Minimal" -> "Modern Minimal"로 검색
-                search_term = dna['mood']['keyword'].replace("&", "")
-                recommendations = search_unsplash(search_term, unsplash_key)
+        with st.spinner(f"🌐 '{dna['mood']['keyword']}' 스타일의 UI 레퍼런스 검색 중..."):
+            # 키는 함수 안에서 secrets를 통해 자동으로 가져옴!
+            # 검색어에 'Natural' 뿐만 아니라 'Green'(색상)도 같이 넣어서 검색함!
+            recommendations = search_unsplash(dna['mood']['keyword'].replace("&", ""), dna['dominant_rgb'])
                 
-            if recommendations:
-                rec_cols = st.columns(3)
-                for i, rec in enumerate(recommendations):
-                    with rec_cols[i]:
-                        st.image(rec['url'], use_container_width=True)
-                        st.caption(f"Photo by {rec['photographer']}")
-                        st.markdown(f"[Unsplash에서 보기]({rec['link']})")
-            else:
-                st.error("이미지를 찾을 수 없거나 API 키가 잘못되었습니다.")
+        if recommendations:
+            rec_cols = st.columns(3)
+            for i, rec in enumerate(recommendations):
+                with rec_cols[i]:
+                    st.image(rec['url'], use_container_width=True)
+                    st.caption(f"by {rec['photographer']}")
+                    st.markdown(f"[Unsplash에서 보기]({rec['link']})")
         else:
-            st.warning("👈 왼쪽 사이드바에 **Unsplash Access Key**를 입력하면 비슷한 분위기의 고화질 레퍼런스를 추천해드려요!")
+            st.info("🔒 API 키가 설정되지 않았거나 검색 결과가 없습니다. (로컬 데모 모드로 작동 중)")
 
         st.write("---")
         pdf_bytes = create_pdf_report(dna, ai_advice)
-        st.download_button("📄 리포트 PDF 다운로드", pdf_bytes, "report.pdf", "application/pdf")
+        st.download_button("📄 리포트 PDF 다운로드 (이미지 포함)", pdf_bytes, "report.pdf", "application/pdf")
 
 # ======================= [모드 2] A/B 비교 =======================
 elif mode == "A/B 비교 (Comparison)":
