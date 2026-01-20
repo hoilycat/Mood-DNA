@@ -7,48 +7,50 @@ from sklearn.cluster import KMeans
 import cv2
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 import io
+import os
+import requests  # <--- ★[NEW] 인터넷 연결용 배달부
 
 # -----------------------------------------------------------
-# 1. [함수] AI 컨설팅 메시지 생성기 (NEW! ✨)
+# [함수] Unsplash 이미지 검색기 (NEW! 🌐)
 # -----------------------------------------------------------
-def get_ai_consulting(mood_data, complexity):
-    # 1. 구조(복잡도)에 따른 조언
-    struct_comment = ""
-    if complexity < 2:
-        struct_comment = "이 디자인은 **여백의 미(Negative Space)**를 아주 잘 활용하고 있어요. 사용자의 시선을 핵심 요소로 집중시키는 **'미니멀리즘 전략'**이 돋보입니다."
-    elif complexity < 5:
-        struct_comment = "이미지와 텍스트의 비율이 **이상적인 균형(Balance)**을 이루고 있습니다. 너무 비어 보이지도, 복잡하지도 않아 **가독성**이 매우 좋습니다."
-    else:
-        struct_comment = "밀도 높은 그래픽과 디테일이 **풍부한 정보**를 전달하고 있습니다. 화려한 비주얼로 압도해야 하는 **이벤트나 프로모션** 디자인에 적합합니다."
-
-    # 2. 분위기(Mood)에 따른 마케팅 조언
-    mood_comment = ""
-    keyword = mood_data['keyword']
+def search_unsplash(query, api_key):
+    # 1. 키가 없으면 검색 안 함
+    if not api_key:
+        return []
     
-    if "Modern" in keyword:
-        mood_comment = "도시적이고 세련된 컬러감은 **IT, 테크, 스타트업** 브랜드의 신뢰도를 높이는 데 효과적입니다."
-    elif "Luxury" in keyword:
-        mood_comment = "중후하고 깊이 있는 톤은 **프리미엄 제품**이나 **VIP 타겟 서비스**의 품격을 대변하기 좋습니다."
-    elif "Energetic" in keyword:
-        mood_comment = "통통 튀는 고채도 컬러는 **MZ세대**를 타겟으로 하거나, **클릭률(CTR)**을 높여야 하는 광고 소재로 아주 훌륭합니다."
-    else: # Natural
-        mood_comment = "눈이 편안한 저채도 컬러는 **웰빙, 라이프스타일, 에세이** 등 감성을 자극하는 분야에서 독보적인 분위기를 만듭니다."
-
-    # 3. 최종 합치기
-    full_advice = f"""
-    💡 **AI 디자인 컨설턴트의 총평:**
+    # 2. 검색어 최적화 (분석 결과 + 'design', 'texture' 등 붙이기)
+    search_query = f"{query} aesthetic design wallpaper"
     
-    {struct_comment} 또한, {mood_comment}
+    # 3. 요청 보내기
+    url = f"https://api.unsplash.com/search/photos"
+    params = {
+        "query": search_query,
+        "client_id": api_key, # 입장권
+        "per_page": 3,        # 3장만 가져와
+        "orientation": "squarish" # 보기 좋게 정사각형 느낌
+    }
     
-    종합적으로 보았을 때, 이 시안은 **[{keyword}]** 무드를 통해 타겟 고객에게 강력한 시각적 경험을 제공할 수 있는 잠재력이 있습니다.
-    """
-    return full_advice
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            # 이미지 URL과 작가 이름만 쏙쏙 뽑아내기
+            results = []
+            for item in data['results']:
+                results.append({
+                    "url": item['urls']['small'],
+                    "photographer": item['user']['name'],
+                    "link": item['links']['html']
+                })
+            return results
+        else:
+            return [] # 에러나면 빈손으로 복귀
+    except:
+        return []
 
 # -----------------------------------------------------------
-# 2. [함수] 분석 로봇
+# [함수] 분석 로봇 (스타벅스 해결 + 캐싱 제거 버전)
 # -----------------------------------------------------------
 def analyze_image_dna(image):
     img_rgb = image.convert('RGB')
@@ -74,11 +76,17 @@ def analyze_image_dna(image):
     sorted_counts = counts[sorted_indices]
     sorted_colors = [colors[i] for i in sorted_indices]
     
-    # 무드 판정
+    # ★ 배경색(흰/검) 무시 로직
     dominant_color = sorted_colors[0]
     r, g, b = int(dominant_color[0]), int(dominant_color[1]), int(dominant_color[2])
     h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
     
+    if (v > 0.9 and s < 0.1) or (v < 0.1):
+        dominant_color = sorted_colors[1]
+        r, g, b = int(dominant_color[0]), int(dominant_color[1]), int(dominant_color[2])
+        h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
+    
+    # 무드 판정
     mood_result = {}
     if s < 0.2:
         mood_result = {"keyword": "Modern & Minimal", "icon": "🏢", "desc": "절제되고 세련된 도시적 감성"}
@@ -95,87 +103,97 @@ def analyze_image_dna(image):
         "colors": sorted_colors,
         "counts": sorted_counts,
         "complexity": complexity_ratio,
-        "mood": mood_result
+        "mood": mood_result,
+        "dominant_rgb": dominant_color
     }
 
 # -----------------------------------------------------------
-# 3. [함수] PDF 리포트 생성기
+# [함수] AI 컨설팅 메시지
+# -----------------------------------------------------------
+def get_ai_consulting(mood_data, complexity):
+    struct_comment = ""
+    if complexity < 2: struct_comment = "이 디자인은 **여백의 미**를 활용한 **'미니멀리즘 전략'**이 돋보입니다."
+    elif complexity < 5: struct_comment = "이미지와 텍스트의 **이상적인 균형(Balance)**을 이루고 있습니다."
+    else: struct_comment = "밀도 높은 디테일이 **풍부한 정보**를 전달하고 있습니다."
+
+    mood_comment = ""
+    keyword = mood_data['keyword']
+    if "Modern" in keyword: mood_comment = "도시적이고 세련된 컬러감은 **IT/테크** 브랜드에 적합합니다."
+    elif "Luxury" in keyword: mood_comment = "중후한 톤은 **프리미엄 제품**의 품격을 대변합니다."
+    elif "Energetic" in keyword: mood_comment = "고채도 컬러는 **MZ세대** 타겟 광고에 효과적입니다."
+    else: mood_comment = "편안한 톤은 **웰빙/라이프스타일** 분야에 어울립니다."
+
+    return f"""
+    💡 **AI 디자인 컨설턴트의 총평:**
+    {struct_comment} {mood_comment}
+    종합적으로 **[{keyword}]** 무드를 통해 타겟 고객에게 강력한 인상을 남길 수 있습니다.
+    """
+
+# -----------------------------------------------------------
+# [함수] PDF 생성
 # -----------------------------------------------------------
 def create_pdf_report(dna_data, advice_text):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
-    
     c.setFont("Helvetica-Bold", 20)
     c.drawString(50, height - 50, "Mood-DNA Analysis Report")
-    
-    # 기본 정보
     mood = dna_data['mood']
     c.setFont("Helvetica", 14)
     c.drawString(50, height - 100, f"Main Mood: {mood['keyword']}")
     c.setFont("Helvetica", 12)
-    c.drawString(50, height - 130, f"Structure Complexity: {dna_data['complexity']:.2f}%")
-    
-    # 컨설팅 내용 (PDF에는 영문이나 단순화해서 넣는 게 안전하지만, 일단 형식만 갖춤)
-    c.drawString(50, height - 160, "AI Consultant Comment:")
-    c.setFont("Helvetica-Oblique", 10)
-    c.drawString(50, height - 180, f"This design shows {mood['keyword']} style with {dna_data['complexity']:.2f}% complexity.")
-    c.drawString(50, height - 195, "It is suitable for the target audience matching this mood.")
-    
+    c.drawString(50, height - 130, f"Complexity: {dna_data['complexity']:.2f}%")
+    c.drawString(50, height - 150, f"Dominant Color: {dna_data['colors'][0]}")
     c.showPage()
     c.save()
     buffer.seek(0)
     return buffer
 
 # -----------------------------------------------------------
-# 4. 메인 화면 (UI)
+# 메인 UI
 # -----------------------------------------------------------
 st.set_page_config(page_title="Mood-DNA Pro", page_icon="🧬", layout="wide")
 
 st.title("🧬 Mood-DNA : AI 디자인 무드 분석기")
 
+# 사이드바 설정
 st.sidebar.header("🎛️ 분석 모드 설정")
 mode = st.sidebar.radio("모드를 선택하세요:", ["단일 분석 (Single)", "A/B 비교 (Comparison)"])
 
-# ===========================================================
-# 모드 1: 단일 분석
-# ===========================================================
+# ★ [NEW] API 키 입력창 (사이드바 하단)
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔑 Unsplash 설정")
+st.sidebar.caption("Unsplash Developers에서 발급받은 Access Key를 입력하면 유사 이미지를 추천해줍니다.")
+unsplash_key = st.sidebar.text_input("Access Key 입력", type="password")
+
+# ======================= [모드 1] 단일 분석 =======================
 if mode == "단일 분석 (Single)":
-    st.sidebar.markdown("---")
     uploaded_file = st.sidebar.file_uploader("이미지 업로드", type=['jpg', 'png', 'jpeg'])
     
     if uploaded_file:
         image = Image.open(uploaded_file)
         dna = analyze_image_dna(image)
-        
-        # ★ 여기서 AI 조언 생성!
         ai_advice = get_ai_consulting(dna['mood'], dna['complexity'])
         
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            st.image(dna['image'], caption="원본 이미지", use_container_width=True)
-        with col2:
-            st.image(dna['edges'], caption=f"구조 분석 (복잡도: {dna['complexity']:.2f}%)", use_container_width=True)
+        # 상단 결과
+        c1, c2 = st.columns([1, 1])
+        with c1: st.image(dna['image'], caption="원본 이미지", use_container_width=True)
+        with c2: st.image(dna['edges'], caption=f"구조 분석 ({dna['complexity']:.2f}%)", use_container_width=True)
             
         st.info(f"🧬 분석 결과: **[{dna['mood']['keyword']}]** {dna['mood']['icon']}\n\n{dna['mood']['desc']}")
-        
-        # ★ [NEW] AI 컨설팅 메시지 보여주기 (파란 박스 대신 깔끔한 예쁜 박스로!)
-        st.markdown(f"""
-        <div style="background-color:#f9f9f9; padding:20px; border-radius:10px; border-left: 5px solid #6c5ce7;">
-            {ai_advice}
-        </div>
-        """, unsafe_allow_html=True)
-        
+        with st.expander("💡 AI 상세 컨설팅 보기"):
+            st.write(ai_advice)
+
         st.write("---")
         
+        # 컬러 & 차트
         c1, c2 = st.columns([1, 1])
         with c1:
             st.subheader("🎨 Color Palette")
             for i, color in enumerate(dna['colors']):
                 hex_code = '#{:02x}{:02x}{:02x}'.format(color[0], color[1], color[2])
                 st.markdown(f'<div style="background-color:{hex_code};height:40px;border-radius:5px;margin-bottom:5px;"></div>', unsafe_allow_html=True)
-                st.caption(f"{hex_code}")
-                
+                st.caption(hex_code)
         with c2:
             st.subheader("📊 Color Ratio")
             fig, ax = plt.subplots(figsize=(4, 3))
@@ -184,72 +202,60 @@ if mode == "단일 분석 (Single)":
             ax.pie(dna['counts'], labels=sorted_hex, colors=sorted_colors_norm, autopct='%1.1f%%', textprops={'fontsize': 8})
             st.pyplot(fig)
 
+        # ★ [NEW] Unsplash 추천 시스템
+        st.write("---")
+        st.subheader("🖼️ AI 추천 레퍼런스 (Powered by Unsplash)")
+        
+        if unsplash_key:
+            with st.spinner(f"🌐 Unsplash에서 '{dna['mood']['keyword']}' 스타일 찾는 중..."):
+                # "Modern & Minimal" -> "Modern Minimal"로 검색
+                search_term = dna['mood']['keyword'].replace("&", "")
+                recommendations = search_unsplash(search_term, unsplash_key)
+                
+            if recommendations:
+                rec_cols = st.columns(3)
+                for i, rec in enumerate(recommendations):
+                    with rec_cols[i]:
+                        st.image(rec['url'], use_container_width=True)
+                        st.caption(f"Photo by {rec['photographer']}")
+                        st.markdown(f"[Unsplash에서 보기]({rec['link']})")
+            else:
+                st.error("이미지를 찾을 수 없거나 API 키가 잘못되었습니다.")
+        else:
+            st.warning("👈 왼쪽 사이드바에 **Unsplash Access Key**를 입력하면 비슷한 분위기의 고화질 레퍼런스를 추천해드려요!")
+
         st.write("---")
         pdf_bytes = create_pdf_report(dna, ai_advice)
-        st.download_button(
-            label="📄 분석 리포트 PDF 다운로드",
-            data=pdf_bytes,
-            file_name="mood_dna_report.pdf",
-            mime="application/pdf"
-        )
+        st.download_button("📄 리포트 PDF 다운로드", pdf_bytes, "report.pdf", "application/pdf")
 
-# ===========================================================
-# 모드 2: A/B 비교 (Comparison) - 수리 완료 버전! 🛠️
-# ===========================================================
+# ======================= [모드 2] A/B 비교 =======================
 elif mode == "A/B 비교 (Comparison)":
     st.header("⚖️ A/B Test : 디자인 시안 비교")
-    st.write("두 개의 이미지를 업로드하여 **매력도와 무드**를 비교분석합니다.")
-    
-    col_a, col_b = st.columns(2)
-    with col_a:
-        file_a = st.file_uploader("A안 이미지", type=['jpg', 'png'], key="a")
-    with col_b:
-        file_b = st.file_uploader("B안 이미지", type=['jpg', 'png'], key="b")
+    ca, cb = st.columns(2)
+    with ca: fa = st.file_uploader("A안", type=['jpg','png'], key="a")
+    with cb: fb = st.file_uploader("B안", type=['jpg','png'], key="b")
         
-    if file_a and file_b:
+    if fa and fb:
         st.write("---")
-        # 분석 실행
-        dna_a = analyze_image_dna(Image.open(file_a))
-        dna_b = analyze_image_dna(Image.open(file_b))
-        
-        # AI 조언 생성
-        advice_a = get_ai_consulting(dna_a['mood'], dna_a['complexity'])
-        advice_b = get_ai_consulting(dna_b['mood'], dna_b['complexity'])
+        da = analyze_image_dna(Image.open(fa))
+        db = analyze_image_dna(Image.open(fb))
+        aa = get_ai_consulting(da['mood'], da['complexity'])
+        ab = get_ai_consulting(db['mood'], db['complexity'])
 
         c1, c2 = st.columns(2)
-        
-        # [A안 결과 화면]
         with c1:
-            st.image(dna_a['image'], caption="[A안]", use_container_width=True)
-            st.success(f"**{dna_a['mood']['keyword']}**")
-            st.write(f"구조 복잡도: {dna_a['complexity']:.2f}%")
-            
-            # ★ [수리 포인트] 글자수 제한 풀고 '접었다 펴기'로 변경!
-            with st.expander("💡 AI 상세 분석 읽기"):
-                st.write(advice_a)
-            
-        # [B안 결과 화면]
+            st.image(da['image'], caption="[A안]", use_container_width=True)
+            st.success(f"**{da['mood']['keyword']}**")
+            with st.expander("AI 분석"): st.write(aa)
         with c2:
-            st.image(dna_b['image'], caption="[B안]", use_container_width=True)
-            st.success(f"**{dna_b['mood']['keyword']}**")
-            st.write(f"구조 복잡도: {dna_b['complexity']:.2f}%")
-            
-            # ★ [수리 포인트] 여기도 제한 해제!
-            with st.expander("💡 AI 상세 분석 읽기"):
-                st.write(advice_b)
+            st.image(db['image'], caption="[B안]", use_container_width=True)
+            st.success(f"**{db['mood']['keyword']}**")
+            with st.expander("AI 분석"): st.write(ab)
             
         st.write("---")
-        st.subheader("🤖 AI의 비교 코멘트")
-        
-        # 비교 로직
-        diff = abs(dna_a['complexity'] - dna_b['complexity'])
-        if diff > 5:
-            winner = "A안" if dna_a['complexity'] < dna_b['complexity'] else "B안"
-            comment = f"두 시안은 구조적으로 큰 차이가 있습니다. **{winner}**이 훨씬 **미니멀하고 직관적**입니다. 정보 전달이 목적이라면 {winner}을, 화려함이 목적이라면 반대안을 선택하세요."
-        else:
-            comment = "두 시안의 구조적 복잡도는 비슷합니다. **브랜드 컬러 아이덴티티**에 더 부합하는 쪽을 선택하는 것을 추천합니다."
-            
-        st.info(comment)
+        st.subheader("🤖 비교 코멘트")
+        winner = "A안" if da['complexity'] < db['complexity'] else "B안"
+        st.info(f"구조적으로 **{winner}**이 더 심플합니다. 색상 무드에 따라 선택하세요.")
 
 else:
-    st.sidebar.info("👈 왼쪽에서 모드를 선택하고 이미지를 업로드해주세요!")
+    st.sidebar.info("👈 왼쪽에서 모드를 선택해주세요!")
