@@ -5,3 +5,4 @@ Pillow
 scikit-learn
 reportlab
 requests
+matplotlib
