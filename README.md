@@ -1,14 +1,12 @@
-🧬 Mood-DNA: AI 디자인 파트너 (v2.0)
-Technical Highlights:
+# 🌱 Mood-DNA V1
 
-Computer Vision: OpenCV 기반 이미지 리사이징 및 RGB 변환 최적화.
+> **v3 보러 가기 → [Mood-DNA-V3](https://github.com/hoilycat/Mood-DNA-V3)**
 
-Unsupervised Learning: K-Means 클러스터링을 활용한 도미넌트 컬러 추출 및 비율 시각화.
+Mood-DNA의 첫 번째 프로토타입입니다.  
+`app.py` 단일 파일로 OpenCV 색상 분석, K-Means 컬러 팔레트, A/B 비교를 구현하였습니다.  
+v2에서 FastAPI+React로 전면 재건축되었으며, v3에서 YIE GraphRAG 연동으로 완성되었습니다.
 
-LLM Integration: Gemini API를 연동하여 타겟 사용자 맞춤형 디자인 컨설팅 제공.
-
-Troubleshooting:
-
-Issue: 배포 환경(Linux Headless)에서의 libGL.so.1 ImportError 발생.
-
-Solution: opencv-python-headless로 의존성을 교체하여 GUI 환경 의존성 문제 해결 및 서버 경량화 달성.
+| | v1 (현재) | v2 | v3 |
+|---|---|---|---|
+| 스택 | Python + Streamlit | FastAPI + React | FastAPI + React + YIE |
+| AI | 룰 기반 if-else | Gemini LLM | GraphRAG 논문 근거 |
